@@ -136,6 +136,39 @@ function Move-Report
     Move-Item -Path $sourcePath -Destination $destination
 }
 
+function Update-ValueInNodes 
+{
+    [CmdletBinding()]
+    param (
+        [Parameter()]
+        [System.Xml.XmlNode]
+        $Node,
+
+        [Parameter(Mandatory)]
+        [string]
+        $OldValue,
+
+        [Parameter(Mandatory)]
+        [string]
+        $NewValue
+    )
+
+    foreach ($child in $Node.ChildNodes)
+    {
+        if ($child.NodeType -eq [System.Xml.XmlNodeType]::Element) 
+        {
+            Update-ValueInNodes -Node $child -OldValue $OldValue -NewValue $NewValue
+        }
+        elseif ($child.NodeType -eq [System.Xml.XmlNodeType]::Text) 
+        {
+            if ($child.Value -match $OldValue) 
+            {
+                $child.Value = $child.Value -replace $OldValue, $NewValue
+            }
+        }
+    }
+}
+
 function Update-ValueInPage
 {
     [CmdletBinding()]
@@ -143,10 +176,6 @@ function Update-ValueInPage
         [Parameter(Mandatory)]
         [System.IO.FileSystemInfo]
         $Page,
-
-        [Parameter(Mandatory)]
-        [string[]]
-        $ElementNames,
 
         [Parameter(Mandatory)]
         [string]
@@ -160,16 +189,8 @@ function Update-ValueInPage
     try 
     {
         [xml]$content = Get-Content -Path $Page.FullName
-        foreach ($elementName in $ElementNames)
-        {
-            $elements = $content.SelectNodes("//$($elementName)")
-            foreach ($element in $elements)
-            {
-                $currentInnerText = $element.InnerText
-                $newInnerText = $currentInnerText -replace $OldValue, $NewValue
-                $element.InnerText = $newInnerText
-            }
-        }
+        
+        Update-ValueInNodes -Node $content.DocumentElement -OldValue $OldValue -NewValue $NewValue
 
         $content.Save($page.FullName)
     }

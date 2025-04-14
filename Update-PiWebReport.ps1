@@ -18,9 +18,6 @@
     .PARAMETER TempReportPath
     The path to the temporary folder used for processing the reports.
 
-    .PARAMETER ElementNames
-    An array of element names where the values should be replaced.
-
     .PARAMETER OldValue
     The old value that should be replaced in the reports.
 
@@ -32,7 +29,6 @@
         OriginalReportPath = 'C:\temp\Original'
         ModifiedReportPath = 'C:\temp\Modified'
         TempReportPath = 'C:\temp\Temp'
-        ElementNames = @('Application', 'HRef')
         OldValue = 'https://pdrs.sdi.corpintra.net'
         NewValue = 'https://pdrs.mo360cp.i.mercedes-benz.com'
     }
@@ -58,10 +54,6 @@
         [Parameter(Mandatory)]
         [string]
         $TempReportPath,
-
-        [Parameter(Mandatory)]
-        [string[]]
-        $ElementNames,
 
         [Parameter(Mandatory)]
         [string]
@@ -94,7 +86,7 @@
             $piwebReportPages = Get-ChildItem -Path "$TempReportPath\PageData"
             foreach ($piwebReportPage in $piwebReportPages)
             {
-                Update-ValueInPage -Page $piwebReportPage -ElementNames $ElementNames -OldValue $OldValue -NewValue $NewValue
+                Update-ValueInPage -Page $piwebReportPage -OldValue $OldValue -NewValue $NewValue
             }
 
             # Archive PiWeb Report
@@ -122,7 +114,6 @@ $params = @{
     OriginalReportPath = 'C:\temp\original'
     ModifiedReportPath = 'C:\temp\modified'
     TempReportPath = 'C:\temp\temp'
-    ElementNames = @('Application', 'HRef')
     OldValue = 'https://pdrs.sdi.corpintra.net'
     NewValue = 'https://pdrs.mo360cp.i.mercedes-benz.com'
 }
