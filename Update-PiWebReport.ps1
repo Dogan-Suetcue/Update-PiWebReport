@@ -18,6 +18,9 @@
     .PARAMETER TempReportPath
     The path to the temporary folder used for processing the reports.
 
+    .PARAMETER ElementNames
+    An array of element names where the values should be replaced.
+
     .PARAMETER OldValue
     The old value that should be replaced in the reports.
 
@@ -26,11 +29,12 @@
 
     .EXAMPLE
     $params = @{
-        OriginalReportPath = 'C:\temp\Original'
-        ModifiedReportPath = 'C:\temp\Modified'
-        TempReportPath = 'C:\temp\Temp'
-        OldValue = 'https://pdrs.sdi.corpintra.net'
-        NewValue = 'https://pdrs.mo360cp.i.mercedes-benz.com'
+        OriginalReportPath = 'C:\Temp\Original'
+        ModifiedReportPath = 'C:\Temp\Modified'
+        TempReportPath = 'C:\Temp\Temp'
+        ElementNames = @('Application', 'HRef')
+        OldValue = 'https://domain.com'
+        NewValue = 'https://new-domain.com'
     }
     Update-PiWebReport @params
     This replaces the URLs in the PiWeb reports according to the specified parameters.
@@ -56,6 +60,10 @@
         $TempReportPath,
 
         [Parameter(Mandatory)]
+        [string[]]
+        $ElementNames,
+
+        [Parameter(Mandatory)]
         [string]
         $OldValue,
 
@@ -72,10 +80,16 @@
     Test-Prerequisite -OriginalReportPath $OriginalReportPath -ModifiedReportPath $ModifiedReportPath -TempReportPath $TempReportPath
 
     $piwebReports = Get-ChildItem -Path $OriginalReportPath -Include '*.ptx' -Recurse
+    $totalReports = $piwebReports.Count
+    $reportIndex = 0
+    
     try
     {
         foreach ($piwebReport in $piwebReports)
         {
+            # Increase the index for the current report
+            $reportIndex++
+
             # Create a temporary folder and copy PiWeb Report
             Copy-Item -Path $piwebReport.FullName -Destination $TempReportPath
 
@@ -84,18 +98,26 @@
 
             # Search and replace value
             $piwebReportPages = Get-ChildItem -Path "$TempReportPath\PageData"
+            $totalPages = $piwebReportPages.Count
+            $pageIndex = 0
+
             foreach ($piwebReportPage in $piwebReportPages)
             {
-                Update-ValueInPage -Page $piwebReportPage -OldValue $OldValue -NewValue $NewValue
+                Update-ValueInPage -Page $piwebReportPage -ElementNames $ElementNames -OldValue $OldValue -NewValue $NewValue
+
+                $pageIndex++
+                $percentComplete = [Math]::Round(($pageIndex / $totalPages) * 100)
+                Write-Progress -Activity "Processing report: $($piwebReport.Name)" -Status "Report $reportIndex of $totalReports, Page $pageIndex of $totalPages" -PercentComplete $percentComplete
+                Start-Sleep -Milliseconds 100
             }
 
             # Archive PiWeb Report
             Compress-PiWebReport -TempReportPath $TempReportPath -Report $piwebReport
 
-            # If necessary, create a subfolder and move the PiWeb Report to the modified folder.
-            Move-Report -TempReportPath $TempReportPath -ModifiedReportPath $ModifiedReportPath -Report $piwebReport
+            # Move the processed PiWeb Report to the Modified folder.
+            Move-ModifiedReport -TempReportPath $TempReportPath -ModifiedReportPath $ModifiedReportPath -Report $piwebReport
 
-            # Clean Temp Folder
+            # Delete report files in the Temp folder
             Remove-Report -TempReportPath $TempReportPath
         }
     }
@@ -104,18 +126,24 @@
         Write-Host "Program aborted: $_.Exception.Message" -ForegroundColor Red
         Exit 1
     }
+    finally
+    {
+        # Delete Temp Folder
+        Remove-TempFolder -TempReportPath $TempReportPath
+    }
 
     Write-Host 'Replacing values in the PiWeb reports are done.' -ForegroundColor Green
-    
-    Remove-TempFolder -TempReportPath $TempReportPath
+    Write-Host 'Press the Enter key to close the programme.'
+    Read-Host
 }
 
 $params = @{
-    OriginalReportPath = 'C:\temp\original'
-    ModifiedReportPath = 'C:\temp\modified'
-    TempReportPath = 'C:\temp\temp'
-    OldValue = 'https://pdrs.sdi.corpintra.net'
-    NewValue = 'https://pdrs.mo360cp.i.mercedes-benz.com'
+    OriginalReportPath = 'C:\Temp\Original'
+    ModifiedReportPath = 'C:\Temp\Modified'
+    TempReportPath = 'C:\Temp\Temp'
+    ElementNames = @('Text', 'HRef', 'Application')
+    OldValue = 'Hello_PowerShell'
+    NewValue = 'Hello_PiWeb'
 }
 
 Update-PiWebReport @params

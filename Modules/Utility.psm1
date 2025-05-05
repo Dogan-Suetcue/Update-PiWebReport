@@ -20,7 +20,7 @@ function New-DirectoryIfNotExists {
     )
 
     if (!(Test-Path -Path $DirectoryPath)) {
-        New-Item -Path $DirectoryPath -ItemType Directory
+        New-Item -Path $DirectoryPath -ItemType Directory | Out-Null
         if ($MessageIfCreated) {
             Write-Host $MessageIfCreated
         }
@@ -58,18 +58,29 @@ function Test-Prerequisite {
         $TempReportPath
     )
 
+    # Check if 7-Zip is installed
     Test-7ZipInstallation
 
+    # Delete Temp Folder
+    if (Test-Path -Path $TempReportPath)
+    {
+        Remove-TempFolder -TempReportPath $TempReportPath
+    }
+    
+    # Create a folder with the name "Original" if it does not exist
     $params = @{
         DirectoryPath = $OriginalReportPath
         MessageIfCreated = "Created missing directory '$($OriginalReportPath)'. Please save the copy of the original PiWeb reports in this folder and run the script again."
     }
     New-DirectoryIfNotExists @params
 
+    # Check whether reports for editing exist in the "Original" folder
     Test-PiWebReportsExist -OriginalReportPath $OriginalReportPath
 
+    # Create a folder with the name "Modified" if it does not exist
     New-DirectoryIfNotExists -DirectoryPath $ModifiedReportPath
 
+    # Create a folder with the name "Temp" if it does not exist
     New-DirectoryIfNotExists -DirectoryPath $TempReportPath
 }
 
@@ -87,8 +98,8 @@ function Expand-PiWebReport
         $Report
     )
 
-    $argumentList = "x `"$(Join-Path -Path $TempReportPath -ChildPath $Report.Name)`" -o$TempReportPath"
-    Start-Process -FilePath $SevenZipPath -ArgumentList $argumentList -Wait
+    $argumentList = "x `"$(Join-Path -Path $TempReportPath -ChildPath $Report.Name)`" -o$TempReportPath -aou"
+    Start-Process -FilePath $SevenZipPath -ArgumentList $argumentList -Wait -WindowStyle Hidden
 }
 
 function Compress-PiWebReport
@@ -105,10 +116,10 @@ function Compress-PiWebReport
     )
 
     $argumentList = "u `"$(Join-Path -Path $TempReportPath -ChildPath $Report.Name)`" $TempReportPath\PageData"
-    Start-Process -FilePath $SevenZipPath -ArgumentList $argumentList -Wait
+    Start-Process -FilePath $SevenZipPath -ArgumentList $argumentList -Wait -WindowStyle Hidden
 }
 
-function Move-Report
+function Move-ModifiedReport
 {
     [CmdletBinding()]
     param (
@@ -125,48 +136,8 @@ function Move-Report
         $Report
     )
 
-    $sourcePath = $(Join-Path -Path $TempReportPath -ChildPath $Report.Name)
-    $destination = $ModifiedReportPath
-    if (!($Report.Directory.Name -eq 'Original'))
-    {      
-        $path = Join-Path -Path $ModifiedReportPath -ChildPath $Report.Directory.Name
-        New-Item -Path $path -ItemType Directory
-        $destination = $path
-    }                             
-    Move-Item -Path $sourcePath -Destination $destination
-}
-
-function Update-ValueInNodes 
-{
-    [CmdletBinding()]
-    param (
-        [Parameter()]
-        [System.Xml.XmlNode]
-        $Node,
-
-        [Parameter(Mandatory)]
-        [string]
-        $OldValue,
-
-        [Parameter(Mandatory)]
-        [string]
-        $NewValue
-    )
-
-    foreach ($child in $Node.ChildNodes)
-    {
-        if ($child.NodeType -eq [System.Xml.XmlNodeType]::Element) 
-        {
-            Update-ValueInNodes -Node $child -OldValue $OldValue -NewValue $NewValue
-        }
-        elseif ($child.NodeType -eq [System.Xml.XmlNodeType]::Text) 
-        {
-            if ($child.Value -match $OldValue) 
-            {
-                $child.Value = $child.Value -replace $OldValue, $NewValue
-            }
-        }
-    }
+    $sourcePath = $(Join-Path -Path $TempReportPath -ChildPath $Report.Name)                       
+    Move-Item -Path $sourcePath -Destination $ModifiedReportPath -Force
 }
 
 function Update-ValueInPage
@@ -178,6 +149,10 @@ function Update-ValueInPage
         $Page,
 
         [Parameter(Mandatory)]
+        [string[]]
+        $ElementNames,
+
+        [Parameter(Mandatory)]
         [string]
         $OldValue,
 
@@ -186,18 +161,25 @@ function Update-ValueInPage
         $NewValue
     )
 
-    try 
+    [xml]$content = Get-Content -Path $Page.FullName
+    foreach ($elementName in $ElementNames)
     {
-        [xml]$content = Get-Content -Path $Page.FullName
-        
-        Update-ValueInNodes -Node $content.DocumentElement -OldValue $OldValue -NewValue $NewValue
+        $elements = $content.SelectNodes("//$($elementName)")
+        if ($elements.Count -ne 0) 
+        {
+            foreach ($element in $elements)
+            {
+                $currentInnerText = $element.InnerText
+                if (-not [string]::IsNullOrEmpty($currentInnerText))
+                {
+                    $newInnerText = $currentInnerText -replace $OldValue, $NewValue
+                    $element.InnerText = $newInnerText
+                }
+            }   
+        }
+    }
 
-        $content.Save($page.FullName)
-    }
-    catch 
-    {
-        throw
-    }
+    $content.Save($page.FullName)
 }
 
 function Remove-Report
@@ -224,4 +206,4 @@ function Remove-TempFolder
     Remove-Item -Path $TempReportPath -Recurse -Force
 }
 
-Export-ModuleMember -Function Test-Prerequisite, Expand-PiWebReport, Compress-PiWebReport, Move-Report, Remove-Report, Update-ValueInPage, Remove-TempFolder
+Export-ModuleMember -Function Test-Prerequisite, Expand-PiWebReport, Compress-PiWebReport, Move-ModifiedReport, Remove-Report, Update-ValueInPage, Remove-TempFolder
